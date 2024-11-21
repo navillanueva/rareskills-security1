@@ -14,4 +14,8 @@ At this point the answer will be the keccak256 of:
 
 In order to "predict" the future and guess the right answer, we need to calculate the block.timestamp at which we will call the settle function. In order to do this, we will use the same operation and feed it a timestamp value one minute in the future, lock in our guess, and then wait to call the settle function.
 
+On Ethereum, the average blocktime is around 12-15 seconds, so the ratios would be:
+  Block N: timestamp = 1700000000
+  Block N+1: timestamp ≈ 1700000012
 
+However, I could not predict the answer by hardcoding the block number and timestamp values, therefore, I tried the other way around. I hardcoded the answer and tampered the block number (**vm.roll**) and the block timestap (**vm.warp**) until I achieved the solution.
