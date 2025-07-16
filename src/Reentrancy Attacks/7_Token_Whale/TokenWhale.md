@@ -1,4 +1,4 @@
-# Token Whale Reentrancy Attack
+# Token Whale Reentrancy Attack Solution
 
 ## Overview
 
