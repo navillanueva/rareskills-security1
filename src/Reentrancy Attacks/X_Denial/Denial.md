@@ -1,1 +1,1 @@
-## Solution Design
+## Solution Design of Denial
