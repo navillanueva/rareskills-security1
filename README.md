@@ -84,6 +84,8 @@ By completing these challenges, you will learn to:
 
 ## 🤝 Contributing
 
+
+
 Feel free to submit issues, improvements, or additional vulnerability examples. This is a learning resource, so contributions that enhance understanding are welcome.
 
 ## 📄 License
