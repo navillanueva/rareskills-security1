@@ -19,6 +19,7 @@ partner.call{value: amountToSend}("");
 3. **Sequential Execution**: The owner's transfer happens AFTER the partner call
 4. **Unlimited Gas Consumption**: The partner can consume all available gas
 
+
 ## Attack Vector
 
 ### How the Attack Works:
