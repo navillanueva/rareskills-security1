@@ -6,6 +6,7 @@ This exercise demonstrates a classic reentrancy vulnerability in a token bank co
 
 ## The Vulnerability
 
+
 ### Root Cause
 The vulnerability exists in the `withdraw` function of the `TokenWhale` contract:
 
