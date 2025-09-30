@@ -4,8 +4,23 @@
 
 This exercise demonstrates a classic reentrancy vulnerability in a token bank contract. The `TokenWhale` contract allows users to deposit and withdraw ERC20 tokens, but the `withdraw` function is vulnerable to reentrancy attacks due to improper state management.
 
+### What is Reentrancy?
+Reentrancy is a vulnerability where an external contract can call back into the calling contract before the first function call has finished executing. This can lead to unexpected behavior, especially when state changes happen after external calls.
+
+### Historical Context
+The most famous reentrancy attack was the DAO hack in 2016, which resulted in the loss of $60 million worth of Ether and led to the Ethereum hard fork that created Ethereum Classic.
+
 ## The Vulnerability
 
+### Contract Structure Analysis
+The `TokenWhale` contract implements a simple token bank with the following key functions:
+- `deposit()` - Allows users to deposit ERC20 tokens
+- `withdraw()` - Allows users to withdraw their deposited tokens
+- `getBalance()` - Returns user's balance for a specific token
+- `getTotalBalance()` - Returns total balance of a token in the contract
+
+### Vulnerability Classification
+This vulnerability falls under the **Reentrancy** category in the SWC (Smart Contract Weakness Classification) registry as **SWC-107**.
 
 ### Root Cause
 The vulnerability exists in the `withdraw` function of the `TokenWhale` contract:
@@ -32,6 +47,19 @@ function withdraw(address token, uint256 amount) external {
 3. **Reentrancy Window**: Between the transfer and balance update, the attacker can call `withdraw` again
 4. **Recursive Drain**: Each call sees the old balance, allowing multiple withdrawals
 
+### Gas Consumption Analysis
+During a reentrancy attack, gas consumption can be calculated as:
+- **Initial call**: ~21,000 gas (base transaction cost)
+- **Each reentrancy**: ~5,000 gas (function call overhead)
+- **Token transfers**: ~65,000 gas per transfer
+- **Total for 10 reentrancies**: ~710,000 gas
+
+### Attack Complexity
+- **Difficulty**: Medium
+- **Required Knowledge**: Basic Solidity, understanding of external calls
+- **Tools Needed**: Remix IDE, MetaMask, or Foundry
+- **Time to Execute**: 5-10 minutes
+
 ## The Attack
 
 ### Attack Contract: `TokenWhaleAttacker`
@@ -42,6 +70,25 @@ The attacker contract exploits this vulnerability through the following steps:
 2. **Initiate Attack**: Call `withdraw` to start the attack
 3. **Reentrancy**: Use `fallback()` or `receive()` to re-enter during token transfer
 4. **Drain**: Continue withdrawing until the contract is empty
+
+### Attack Prerequisites
+Before launching the attack, the attacker must:
+- Deploy a malicious contract with reentrancy logic
+- Obtain some of the target ERC20 tokens
+- Approve the TokenWhale contract to spend their tokens
+- Deposit tokens into the vulnerable contract
+
+### Attack Execution Timeline
+```
+T+0:  Attacker calls withdraw(100)
+T+1:  TokenWhale checks balance (100 tokens)
+T+2:  TokenWhale calls token.transfer(attacker, 100)
+T+3:  Attacker's receive() function triggers
+T+4:  Attacker calls withdraw(100) again
+T+5:  TokenWhale checks balance (still 100 tokens!)
+T+6:  TokenWhale calls token.transfer(attacker, 100)
+T+7:  Process repeats until contract is drained
+```
 
 ### Key Components
 
@@ -97,7 +144,33 @@ fallback() external {
 - **Recursive Exploitation**: Each deposit can be withdrawn multiple times
 - **Economic Loss**: Legitimate users lose their deposited tokens
 
+### Financial Impact Analysis
+The potential financial impact depends on several factors:
+- **Contract Balance**: Total value locked in the contract
+- **Token Price**: Current market value of the tokens
+- **Attack Frequency**: How often the vulnerability can be exploited
+- **User Base**: Number of affected users
+
+### Example Scenarios
+1. **Small Contract**: $10,000 TVL → Complete loss
+2. **Medium Contract**: $1M TVL → Complete loss  
+3. **Large Contract**: $100M TVL → Complete loss
+
+### Secondary Effects
+- **Loss of Trust**: Users lose confidence in the protocol
+- **Regulatory Scrutiny**: May attract regulatory attention
+- **Legal Consequences**: Potential lawsuits from affected users
+- **Reputation Damage**: Long-term impact on project credibility
+
 ## Prevention
+
+### Security Best Practices Overview
+Preventing reentrancy attacks requires a multi-layered approach:
+1. **Code Patterns**: Follow established security patterns
+2. **State Management**: Proper ordering of state changes
+3. **External Calls**: Careful handling of external interactions
+4. **Testing**: Comprehensive testing with malicious contracts
+5. **Auditing**: Professional security audits
 
 ### 1. Checks-Effects-Interactions Pattern
 Update state before making external calls:
