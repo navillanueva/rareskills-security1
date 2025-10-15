@@ -1,6 +1,6 @@
 # Token Whale Reentrancy Attack Solution
 
-## Overview
+## Overview Solution
 
 This exercise demonstrates a classic reentrancy vulnerability in a token bank contract. The `TokenWhale` contract allows users to deposit and withdraw ERC20 tokens, but the `withdraw` function is vulnerable to reentrancy attacks due to improper state management.
 
