@@ -226,6 +226,60 @@ function withdrawFunds() external {
 }
 ```
 
+### 4. OpenZeppelin ReentrancyGuard
+Use the battle-tested OpenZeppelin library:
+
+```solidity
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+
+contract TokenWhale is ReentrancyGuard {
+    function withdraw(address token, uint256 amount) 
+        external 
+        nonReentrant 
+    {
+        // Safe withdrawal logic
+    }
+}
+```
+
+### 5. Mutex Pattern
+Implement a simple mutex to prevent reentrancy:
+
+```solidity
+contract TokenWhale {
+    bool private locked;
+    
+    modifier noReentrant() {
+        require(!locked, "Reentrancy detected");
+        locked = true;
+        _;
+        locked = false;
+    }
+    
+    function withdraw(address token, uint256 amount) 
+        external 
+        noReentrant 
+    {
+        // Safe withdrawal logic
+    }
+}
+```
+
+### 6. Gas Limit Protection
+Limit gas for external calls:
+
+```solidity
+function withdraw(address token, uint256 amount) external {
+    // ... checks ...
+    
+    // Limit gas to prevent expensive operations
+    (bool success,) = token.call{value: 0, gas: 2300}(
+        abi.encodeWithSignature("transfer(address,uint256)", msg.sender, amount)
+    );
+    require(success, "Transfer failed");
+}
+```
+
 ## Testing the Attack
 
 ### Setup
@@ -240,11 +294,57 @@ function withdrawFunds() external {
 - Multiple withdrawals occur from a single deposit
 - TokenWhale's balance goes to zero
 
+### Test Cases
+1. **Basic Attack Test**: Single reentrancy attack
+2. **Multiple Attack Test**: Multiple consecutive attacks
+3. **Edge Case Test**: Attack with minimum balance
+4. **Gas Limit Test**: Attack with limited gas
+5. **Recovery Test**: Contract behavior after attack
+
+### Debugging Tips
+- Use `console.log()` to track function calls
+- Monitor gas consumption during attack
+- Check state changes after each call
+- Verify token balances before and after
+
+### Common Issues
+- **Out of Gas**: Attack may fail if gas limit is too low
+- **Insufficient Balance**: Ensure attacker has enough tokens
+- **Contract Not Deployed**: Verify all contracts are properly deployed
+- **Wrong Addresses**: Double-check contract addresses
+
 ## Real-World Examples
 
 - **The DAO Hack (2016)**: $60M drained through reentrancy
 - **Lendf.me (2020)**: $25M stolen via reentrancy attack
 - **Cream Finance (2021)**: $130M lost to reentrancy
+
+### Detailed Case Studies
+
+#### The DAO Hack (June 2016)
+- **Amount Lost**: $60 million in Ether
+- **Root Cause**: Reentrancy in `splitDAO` function
+- **Impact**: Led to Ethereum hard fork creating ETC
+- **Lesson**: External calls before state updates are dangerous
+
+#### Lendf.me Attack (April 2020)
+- **Amount Lost**: $25 million
+- **Vulnerability**: Reentrancy in lending protocol
+- **Method**: Attacker used `imBTC` token's reentrancy
+- **Recovery**: Funds were eventually returned
+
+#### Cream Finance Attack (October 2021)
+- **Amount Lost**: $130 million
+- **Vulnerability**: Reentrancy in flash loan mechanism
+- **Method**: Complex multi-step attack using multiple protocols
+- **Impact**: One of the largest DeFi hacks in history
+
+### Attack Evolution
+Reentrancy attacks have evolved over time:
+1. **2016**: Simple reentrancy (The DAO)
+2. **2017-2019**: Cross-function reentrancy
+3. **2020-2021**: Cross-contract reentrancy
+4. **2022-Present**: Advanced reentrancy with flash loans
 
 ## Key Takeaways
 
@@ -254,4 +354,49 @@ function withdrawFunds() external {
 4. **Test thoroughly with malicious contracts**
 5. **Consider using established libraries like OpenZeppelin**
 
-This vulnerability demonstrates why proper state management and external call ordering are crucial for smart contract security.
+## Advanced Topics
+
+### Cross-Function Reentrancy
+Reentrancy can occur across different functions:
+```solidity
+function withdraw() external {
+    // External call
+    token.transfer(msg.sender, amount);
+    // State update
+    balances[msg.sender] -= amount;
+}
+
+function deposit() external {
+    // Vulnerable to reentrancy from withdraw()
+    balances[msg.sender] += amount;
+}
+```
+
+### Cross-Contract Reentrancy
+Reentrancy can span multiple contracts:
+1. Contract A calls Contract B
+2. Contract B calls Contract C
+3. Contract C calls back to Contract A
+4. This creates a reentrancy chain
+
+### Prevention Strategies Summary
+| Strategy | Effectiveness | Gas Cost | Complexity |
+|----------|---------------|----------|------------|
+| CEI Pattern | High | Low | Low |
+| ReentrancyGuard | High | Medium | Low |
+| Pull Payments | High | Low | Medium |
+| Gas Limits | Medium | Low | Low |
+| Mutex | High | Low | Medium |
+
+## Conclusion
+
+This vulnerability demonstrates why proper state management and external call ordering are crucial for smart contract security. The TokenWhale contract serves as an excellent example of how seemingly simple code can contain critical vulnerabilities that can lead to complete fund drainage.
+
+### Final Recommendations
+1. **Audit Everything**: Get professional security audits
+2. **Test Extensively**: Use formal verification tools
+3. **Stay Updated**: Keep up with latest security practices
+4. **Learn Continuously**: Security is an ongoing process
+5. **Think Like an Attacker**: Always consider adversarial scenarios
+
+Remember: In smart contract security, it's not about making code that works, but making code that works securely under all conditions.
