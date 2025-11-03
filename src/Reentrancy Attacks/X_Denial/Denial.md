@@ -1,5 +1,7 @@
 # Denial of Service (DoS) Attack
 
+## Overview
+
 The `Denial` contract contains a **Denial of Service vulnerability** that allows an attacker to permanently prevent the owner from withdrawing funds by exploiting unbounded gas consumption in external calls.
 
 ## The Vulnerability
