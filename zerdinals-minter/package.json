@@ -1,0 +1,26 @@
+{
+  "name": "zerdinals-minter",
+  "version": "1.0.0",
+  "description": "Automated Zcash Zerdinals minting bot",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "mint": "node bot.js mint"
+  },
+  "keywords": [
+    "zcash",
+    "zerdinals",
+    "minting",
+    "automation"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "bitcoinjs-lib": "^7.0.0",
+    "dotenv": "^16.0.3",
+    "ecpair": "^3.0.0",
+    "node-fetch": "^2.7.0",
+    "tiny-secp256k1": "^2.2.4",
+    "wif": "^5.0.0"
+  }
+}
