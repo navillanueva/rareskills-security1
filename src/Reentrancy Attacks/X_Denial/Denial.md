@@ -1,6 +1,6 @@
 # Denial of Service (DoS) Attack - Solution Explanation
 
-## Overview
+## Overview 1
 The `Denial` contract demonstrates a **Denial of Service (DoS) vulnerability** where an attacker can prevent the owner from withdrawing funds by consuming all available gas during the withdrawal process.
 
 ## Vulnerability Analysis
