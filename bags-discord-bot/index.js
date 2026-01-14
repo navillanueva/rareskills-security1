@@ -281,7 +281,12 @@ async function sendClaimAlert(claims) {
               inline: true
             },
             {
-              name: '🔗 Contract Address',
+              name: '🔗 Token Contract Address',
+              value: `\`${token.address}\``,
+              inline: false
+            },
+            {
+              name: '👤 Creator Wallet',
               value: `\`${creator.wallet}\``,
               inline: false
             },
