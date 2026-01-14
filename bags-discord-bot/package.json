@@ -1,0 +1,17 @@
+{
+  "name": "bags-discord-bot",
+  "version": "1.0.0",
+  "description": "Discord bot for Bags.fun top traded tokens via Jupiter API",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node index.js"
+  },
+  "keywords": ["bags.fun", "discord", "jupiter", "solana", "tokens"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "node-fetch": "^2.7.0"
+  }
+}
+
