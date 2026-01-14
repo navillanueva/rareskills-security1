@@ -38,6 +38,7 @@ async function fetchTopTradedTokens() {
 async function fetchLifetimeFees() {
   try {
     console.log(`[${new Date().toISOString()}] 💰 Fetching lifetime fees data...`);
+    console.log(`   ℹ️  API returns top 100 by LIFETIME FEES (changes as tokens earn more)`);
     const response = await fetch(BAGS_FEES_API_URL);
     
     if (!response.ok) {
@@ -46,7 +47,7 @@ async function fetchLifetimeFees() {
     
     const data = await response.json();
     const tokens = data.response || data;
-    console.log(`   ✅ Got fee data for ${tokens.length} tokens`);
+    console.log(`   ✅ Got fee data for ${tokens.length} tokens (ranked by lifetime fees)`);
     return tokens;
   } catch (error) {
     console.error(`   ❌ Error:`, error.message);
@@ -97,7 +98,29 @@ async function buildCompleteTokenData() {
     });
     
     console.log(`   ✅ Built data for ${enrichedTokens.length} tokens`);
-    console.log(`   📊 ${enrichedTokens.filter(t => t.isTopTraded).length} are in top 15 traded`);
+    console.log(`   📊 ${enrichedTokens.filter(t => t.isTopTraded).length} are in top 15 traded\n`);
+    
+    // Log detailed token information
+    console.log('═══════════════════════════════════════════════════════════════════');
+    console.log('📊 TOP 100 TOKENS BY LIFETIME FEES');
+    console.log('═══════════════════════════════════════════════════════════════════\n');
+    
+    enrichedTokens.forEach((token, index) => {
+      // Get main developer (has royalties and/or Twitter)
+      const mainDev = token.creators.find(c => c.royaltyBps > 0) || token.creators[0];
+      
+      if (mainDev) {
+        const devAddress = mainDev.wallet.substring(0, 8) + '...';
+        const twitter = mainDev.username || mainDev.twitterUsername || 'N/A';
+        const claimed = parseFloat(mainDev.totalClaimed || 0) / 1e9;
+        const hasClaimed = claimed > 0;
+        const claimStatus = hasClaimed ? `✅ ${claimed.toFixed(2)} SOL` : '⏳ Unclaimed';
+        
+        console.log(`${(index + 1).toString().padStart(3)}. ${token.symbol.padEnd(12)} | Dev: ${devAddress.padEnd(12)} | Twitter: ${twitter.padEnd(20)} | ${claimStatus}`);
+      }
+    });
+    
+    console.log('\n═══════════════════════════════════════════════════════════════════\n');
     
     return enrichedTokens;
     
