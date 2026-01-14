@@ -10,8 +10,10 @@ const HOUR_IN_MS = 3600000; // 1 hour in milliseconds
 // Track claimed amounts for each token/creator
 const claimedAmountsTracker = new Map();
 
-// Track time of last claim
+// Track time of last claim and last gooning message
 let lastClaimTime = Date.now();
+let lastGooningMessageTime = 0;
+let isFirstRun = true;
 
 // Fetch top traded tokens from Jupiter
 async function fetchTopTradedTokens() {
@@ -286,6 +288,8 @@ async function sendClaimAlert(claims) {
 // Send "gooning" message if no claims in past hour
 async function sendGooningMessage() {
   try {
+    const minutesSinceLastClaim = Math.floor((Date.now() - lastClaimTime) / 60000);
+    
     const payload = {
       embeds: [{
         title: '😴 Everybody must be gooning...',
@@ -299,12 +303,12 @@ async function sendGooningMessage() {
           },
           {
             name: '🕐 Time Since Last Claim',
-            value: `${Math.floor((Date.now() - lastClaimTime) / 60000)} minutes`,
+            value: `${minutesSinceLastClaim} minutes`,
             inline: false
           }
         ],
         footer: {
-          text: 'Monitoring continues...'
+          text: 'Monitoring continues every 5 seconds...'
         },
         timestamp: new Date().toISOString()
       }]
@@ -320,86 +324,23 @@ async function sendGooningMessage() {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     
-    console.log(`   😴 "Gooning" message sent (no claims in past hour)`);
+    console.log(`   😴 "Gooning" message sent (${minutesSinceLastClaim} min since last claim)`);
+    lastGooningMessageTime = Date.now();
   } catch (error) {
     console.error(`   ❌ Error:`, error.message);
   }
 }
 
-// Send "no claims" message to Discord
-async function sendNoClaimsMessage(tokens) {
-  try {
-    // Check if it's been over an hour since last claim
-    const timeSinceLastClaim = Date.now() - lastClaimTime;
-    if (timeSinceLastClaim > HOUR_IN_MS) {
-      await sendGooningMessage();
-      return;
-    }
-    
-    const totalTokens = tokens.length;
-    const topTradedCount = tokens.filter(t => t.isTopTraded).length;
-    const totalTracked = claimedAmountsTracker.size;
-    
-    // Calculate total fees being monitored
-    const totalFees = tokens.reduce((sum, t) => sum + (t.lifetimeFees || 0), 0);
-    const totalClaimed = tokens.reduce((sum, t) => {
-      return sum + t.creators.reduce((s, c) => s + parseFloat(c.totalClaimed || 0) / 1e9, 0);
-    }, 0);
-    
-    // Get top 5 tokens by unclaimed fees
-    const topUnclaimed = [...tokens]
-      .map(t => ({
-        ...t,
-        unclaimed: t.lifetimeFees - t.creators.reduce((s, c) => s + parseFloat(c.totalClaimed || 0) / 1e9, 0)
-      }))
-      .sort((a, b) => b.unclaimed - a.unclaimed)
-      .slice(0, 5);
-    
-    const unclaimedList = topUnclaimed
-      .map(t => `• ${t.symbol}: ${t.unclaimed.toFixed(2)} SOL`)
-      .join('\n');
-    
-    const payload = {
-      embeds: [{
-        title: '✅ No New Claims',
-        description: `Monitoring ${totalTokens} tokens - no fee claims detected this cycle`,
-        color: 0x00ff00,
-        fields: [
-          {
-            name: '📊 Monitoring Stats',
-            value: `Total tokens: ${totalTokens}\n` +
-                   `Top 15 traded: ${topTradedCount}\n` +
-                   `Creators tracked: ${totalTracked}\n` +
-                   `Total fees: ${totalFees.toFixed(2)} SOL\n` +
-                   `Total claimed: ${totalClaimed.toFixed(2)} SOL`,
-            inline: false
-          },
-          {
-            name: '💰 Top 5 Unclaimed Fees',
-            value: unclaimedList || 'None',
-            inline: false
-          }
-        ],
-        footer: {
-          text: 'Next check in 5 seconds'
-        },
-        timestamp: new Date().toISOString()
-      }]
-    };
-    
-    const response = await fetch(DISCORD_WEBHOOK_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    
-    console.log(`   ✅ "No claims" message sent to Discord`);
-  } catch (error) {
-    console.error(`   ❌ Error:`, error.message);
+// Check if should send hourly gooning message
+async function checkAndSendGooningMessage() {
+  const timeSinceLastClaim = Date.now() - lastClaimTime;
+  const timeSinceLastGooningMessage = Date.now() - lastGooningMessageTime;
+  
+  // Only send gooning message if:
+  // 1. Been over an hour since last claim
+  // 2. Been over an hour since last gooning message (avoid spam)
+  if (timeSinceLastClaim > HOUR_IN_MS && timeSinceLastGooningMessage > HOUR_IN_MS) {
+    await sendGooningMessage();
   }
 }
 
@@ -409,6 +350,18 @@ async function monitorFees() {
     // Build complete token data
     const tokens = await buildCompleteTokenData();
     
+    // Skip sending any messages on first run (just establish baseline)
+    if (isFirstRun) {
+      console.log(`   📝 First run - establishing baseline (no Discord messages)\n`);
+      isFirstRun = false;
+      
+      // Check for new claims to populate tracker
+      checkForNewClaims(tokens);
+      
+      console.log(`[${new Date().toISOString()}] ✅ Baseline established\n`);
+      return;
+    }
+    
     // Check for new claims
     const newClaims = checkForNewClaims(tokens);
     
@@ -417,8 +370,10 @@ async function monitorFees() {
       console.log(`\n🎯 Found ${newClaims.length} new claim(s)!\n`);
       await sendClaimAlert(newClaims);
     } else {
-      console.log(`   ℹ️  No new claims detected\n`);
-      await sendNoClaimsMessage(tokens);
+      console.log(`   ℹ️  No new claims detected`);
+      
+      // Check if should send hourly gooning message
+      await checkAndSendGooningMessage();
     }
     
     console.log(`[${new Date().toISOString()}] ✅ Monitoring cycle completed\n`);

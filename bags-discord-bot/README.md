@@ -4,14 +4,18 @@ Monitors 100+ Bags.fun tokens and alerts Discord when creators claim fees.
 
 ## AWS Deployment (Amazon Linux 2023)
 
-### 1. Install Node.js
+### 1. Install Git and Node.js
 
 ```bash
+# Install git
+sudo yum install -y git
+
 # Install Node.js 18+
 curl -fsSL https://rpm.nodesource.com/setup_18.x | sudo bash -
 sudo yum install -y nodejs
 
 # Verify installation
+git --version
 node --version
 npm --version
 ```
