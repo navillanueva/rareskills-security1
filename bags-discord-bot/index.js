@@ -119,6 +119,17 @@ function checkForNewClaims(tokens) {
       
       if (claimed === 0) return; // Skip if nothing claimed
       
+      // FILTER 1: Only track creators with Twitter/username (the actual dev)
+      const hasTwitter = creator.username || creator.twitterUsername;
+      
+      // FILTER 2: Only track creators with royalties (the ones getting paid)
+      const hasRoyalties = creator.royaltyBps > 0;
+      
+      // Skip if not the main creator/developer
+      if (!hasTwitter && !hasRoyalties) {
+        return; // Skip automated addresses (BagsAMM, etc.)
+      }
+      
       // Create unique key for this creator/token combo
       const key = `${token.address}-${creator.wallet}`;
       const previousClaimed = claimedAmountsTracker.get(key) || 0;
@@ -127,21 +138,26 @@ function checkForNewClaims(tokens) {
       if (claimed > previousClaimed) {
         const newClaimAmount = claimed - previousClaimed;
         
-        newClaims.push({
-          token: token,
-          creator: creator,
-          previousClaimed: previousClaimed,
-          newClaimed: claimed,
-          claimAmount: newClaimAmount
-        });
-        
-        console.log(`   🚨 NEW CLAIM DETECTED!`);
-        console.log(`      Token: ${token.symbol} (${token.name})`);
-        console.log(`      Creator: ${creator.username || creator.wallet.substring(0, 8)}`);
-        console.log(`      Claimed: ${newClaimAmount.toFixed(4)} SOL (Total: ${claimed.toFixed(4)} SOL)`);
-        
-        // Update last claim time
-        lastClaimTime = Date.now();
+        // FILTER 3: Only alert if claim is >= 1 SOL (filter out dust)
+        if (newClaimAmount >= 1.0) {
+          newClaims.push({
+            token: token,
+            creator: creator,
+            previousClaimed: previousClaimed,
+            newClaimed: claimed,
+            claimAmount: newClaimAmount
+          });
+          
+          console.log(`   🚨 NEW CLAIM DETECTED!`);
+          console.log(`      Token: ${token.symbol} (${token.name})`);
+          console.log(`      Creator: ${creator.username || creator.twitterUsername || creator.wallet.substring(0, 8)}`);
+          console.log(`      Claimed: ${newClaimAmount.toFixed(4)} SOL (Total: ${claimed.toFixed(4)} SOL)`);
+          
+          // Update last claim time
+          lastClaimTime = Date.now();
+        } else {
+          console.log(`   ℹ️  Small claim ignored: ${newClaimAmount.toFixed(4)} SOL from ${creator.username || 'unknown'} (< 1 SOL threshold)`);
+        }
       }
       
       // Update tracker
