@@ -116,7 +116,7 @@ async function buildCompleteTokenData() {
         const hasClaimed = claimed > 0;
         const claimStatus = hasClaimed ? `✅ ${claimed.toFixed(2)} SOL` : '⏳ Unclaimed';
         
-        console.log(`${(index + 1).toString().padStart(3)}. ${token.symbol.padEnd(12)} | Dev: ${devAddress.padEnd(12)} | Twitter: ${twitter.padEnd(20)} | ${claimStatus}`);
+        console.log(`${(index + 1).toString().padStart(3)}. ${token.symbol.padEnd(12)} | Address: ${devAddress.padEnd(12)} | Twitter: ${twitter.padEnd(20)} | ${claimStatus}`);
       }
     });
     
@@ -281,14 +281,16 @@ async function sendClaimAlert(claims) {
               inline: true
             },
             {
-              name: '🔗 Wallet',
+              name: '🔗 Contract Address',
               value: `\`${creator.wallet}\``,
               inline: false
             },
             {
               name: '📈 Token Stats',
               value: `Price: $${token.price?.toFixed(8) || 'N/A'}\n` +
+                     `Market Cap: $${token.marketCap?.toLocaleString() || 'N/A'}\n` +
                      `24h Volume: $${token.volume24h?.toLocaleString() || 'N/A'}\n` +
+                     `Liquidity: $${token.liquidity?.toLocaleString() || 'N/A'}\n` +
                      `Lifetime Fees: ${token.lifetimeFees?.toFixed(2) || 'N/A'} SOL`,
               inline: false
             }
