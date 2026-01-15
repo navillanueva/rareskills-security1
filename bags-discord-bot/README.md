@@ -27,6 +27,11 @@ npm --version
 git clone https://github.com/navillanueva/rareskills-security1.git
 cd rareskills-security1/bags-discord-bot
 
+# Create .env file
+cp env.example .env
+nano .env
+# Add your Discord webhook URL
+
 # Install dependencies
 npm install
 ```

@@ -1,14 +1,24 @@
+require('dotenv').config();
 const fetch = require('node-fetch');
 
 // Configuration
 const JUPITER_API_URL = 'https://datapi.jup.ag/v1/assets/toptraded/24h?launchpads=bags.fun&limit=15';
 const BAGS_FEES_API_URL = 'https://api2.bags.fm/api/v1/token-launch/top-tokens/lifetime-fees';
-const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1431268776380334091/k9ImqNKCoShKplz70X6SWkl1wkUjOKdnsr3hoRC8nFcmJ8oL4rNv-EKzNAzsPludksKD';
+const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 const POLL_INTERVAL = 5000; // 5 seconds for claim monitoring
 const HOUR_IN_MS = 3600000; // 1 hour in milliseconds
 
+// Validate configuration
+if (!DISCORD_WEBHOOK_URL) {
+  console.error('❌ DISCORD_WEBHOOK_URL not set in .env file!');
+  process.exit(1);
+}
+
 // Track claimed amounts for each token/creator
 const claimedAmountsTracker = new Map();
+
+// Track which creators have already had their FIRST claim alerted
+const firstClaimAlerted = new Set();
 
 // Track time of last claim and last gooning message
 let lastClaimTime = Date.now();
@@ -163,21 +173,34 @@ function checkForNewClaims(tokens) {
         
         // FILTER 3: Only alert if claim is >= 1 SOL (filter out dust)
         if (newClaimAmount >= 1.0) {
-          newClaims.push({
-            token: token,
-            creator: creator,
-            previousClaimed: previousClaimed,
-            newClaimed: claimed,
-            claimAmount: newClaimAmount
-          });
+          // FILTER 4: Only alert on FIRST claim by this creator
+          const creatorKey = `${token.address}-${creator.wallet}`;
+          const isFirstClaim = !firstClaimAlerted.has(creatorKey);
           
-          console.log(`   🚨 NEW CLAIM DETECTED!`);
-          console.log(`      Token: ${token.symbol} (${token.name})`);
-          console.log(`      Creator: ${creator.username || creator.twitterUsername || creator.wallet.substring(0, 8)}`);
-          console.log(`      Claimed: ${newClaimAmount.toFixed(4)} SOL (Total: ${claimed.toFixed(4)} SOL)`);
-          
-          // Update last claim time
-          lastClaimTime = Date.now();
+          if (isFirstClaim) {
+            newClaims.push({
+              token: token,
+              creator: creator,
+              previousClaimed: previousClaimed,
+              newClaimed: claimed,
+              claimAmount: newClaimAmount,
+              isFirstClaim: true
+            });
+            
+            console.log(`   🚨 FIRST CLAIM DETECTED!`);
+            console.log(`      Token: ${token.symbol} (${token.name})`);
+            console.log(`      Creator: ${creator.username || creator.twitterUsername || creator.wallet.substring(0, 8)}`);
+            console.log(`      Claimed: ${newClaimAmount.toFixed(4)} SOL (Total: ${claimed.toFixed(4)} SOL)`);
+            console.log(`      ⭐ This is their FIRST claim!`);
+            
+            // Mark as alerted
+            firstClaimAlerted.add(creatorKey);
+            
+            // Update last claim time
+            lastClaimTime = Date.now();
+          } else {
+            console.log(`   ℹ️  Subsequent claim ignored: ${newClaimAmount.toFixed(4)} SOL from ${creator.username || 'unknown'} (already alerted on first claim)`);
+          }
         } else {
           console.log(`   ℹ️  Small claim ignored: ${newClaimAmount.toFixed(4)} SOL from ${creator.username || 'unknown'} (< 1 SOL threshold)`);
         }
@@ -256,8 +279,8 @@ async function sendClaimAlert(claims) {
       
       const payload = {
         embeds: [{
-          title: '🚨 FEE CLAIM DETECTED!',
-          description: `**${creator.username || creator.twitterUsername || 'Creator'}** just claimed fees!`,
+          title: '🚨 FIRST FEE CLAIM DETECTED!',
+          description: `**${creator.username || creator.twitterUsername || 'Creator'}** just claimed fees for the FIRST TIME!`,
           color: 0xff0000,
           fields: [
             {
