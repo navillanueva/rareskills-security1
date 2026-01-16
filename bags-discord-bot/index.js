@@ -2,7 +2,7 @@ require('dotenv').config();
 const fetch = require('node-fetch');
 
 // Configuration
-const JUPITER_API_URL = 'https://datapi.jup.ag/v1/assets/toptraded/24h?launchpads=bags.fun&limit=15';
+const TARGET_TOKEN = 'Gc8VdRoCtset6SFErLKBcV5e4Ew8XwnTDYbtYXFTBAGS'; // Specific token to monitor
 const BAGS_FEES_API_URL = 'https://api2.bags.fm/api/v1/token-launch/top-tokens/lifetime-fees';
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 const POLL_INTERVAL = 5000; // 5 seconds for claim monitoring
@@ -25,30 +25,10 @@ let lastClaimTime = Date.now();
 let lastGooningMessageTime = 0;
 let isFirstRun = true;
 
-// Fetch top traded tokens from Jupiter
-async function fetchTopTradedTokens() {
+// Fetch specific token data
+async function fetchTargetTokenData() {
   try {
-    console.log(`[${new Date().toISOString()}] 📊 Fetching top 15 traded tokens...`);
-    const response = await fetch(JUPITER_API_URL);
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    
-    const tokens = await response.json();
-    console.log(`   ✅ Got ${tokens.length} tokens`);
-    return tokens;
-  } catch (error) {
-    console.error(`   ❌ Error:`, error.message);
-    throw error;
-  }
-}
-
-// Fetch lifetime fees from Bags.fm
-async function fetchLifetimeFees() {
-  try {
-    console.log(`[${new Date().toISOString()}] 💰 Fetching lifetime fees data...`);
-    console.log(`   ℹ️  API returns top 100 by LIFETIME FEES (changes as tokens earn more)`);
+    console.log(`[${new Date().toISOString()}] 🎯 Checking target token: ${TARGET_TOKEN.substring(0, 12)}...`);
     const response = await fetch(BAGS_FEES_API_URL);
     
     if (!response.ok) {
@@ -57,82 +37,74 @@ async function fetchLifetimeFees() {
     
     const data = await response.json();
     const tokens = data.response || data;
-    console.log(`   ✅ Got fee data for ${tokens.length} tokens (ranked by lifetime fees)`);
-    return tokens;
+    
+    // Find our specific token
+    const targetToken = tokens.find(t => t.token === TARGET_TOKEN);
+    
+    if (!targetToken) {
+      console.log(`   ⚠️  Target token not found in top 100 by lifetime fees`);
+      return null;
+    }
+    
+    console.log(`   ✅ Found target token: ${targetToken.tokenInfo?.symbol}`);
+    return targetToken;
   } catch (error) {
     console.error(`   ❌ Error:`, error.message);
     throw error;
   }
 }
 
-// Cross-reference tokens and build complete data
-async function buildCompleteTokenData() {
+
+// Build token data for specific target token
+async function buildTokenData() {
   try {
-    // Fetch both datasets
-    const [topTraded, feesData] = await Promise.all([
-      fetchTopTradedTokens(),
-      fetchLifetimeFees()
-    ]);
+    // Fetch target token
+    const targetToken = await fetchTargetTokenData();
     
-    console.log(`[${new Date().toISOString()}] 🔗 Cross-referencing token data...\n`);
+    if (!targetToken) {
+      console.log(`   ⚠️  Target token not available\n`);
+      return null;
+    }
     
-    // Create a map of trading data by token address (for enrichment)
-    const tradingMap = new Map();
-    topTraded.forEach(token => {
-      tradingMap.set(token.id, token);
-    });
+    const tokenInfo = targetToken.tokenInfo;
+    const token = {
+      address: targetToken.token,
+      symbol: tokenInfo?.symbol || 'Unknown',
+      name: tokenInfo?.name || 'Unknown',
+      icon: tokenInfo?.icon,
+      price: tokenInfo?.usdPrice || 0,
+      marketCap: tokenInfo?.mcap || 0,
+      liquidity: tokenInfo?.liquidity || 0,
+      volume24h: 0,
+      priceChange24h: tokenInfo?.stats24h?.priceChange || 0,
+      lifetimeFees: parseFloat(targetToken.lifetimeFees) / 1e9,
+      creators: targetToken.creators || []
+    };
     
-    // PRIMARY: Use ALL tokens from Bags.fm (100 tokens with fee data)
-    // SECONDARY: Enrich with Jupiter trading data if available
-    const enrichedTokens = feesData.map(feeItem => {
-      const tradingData = tradingMap.get(feeItem.token);
-      const tokenInfo = feeItem.tokenInfo;
-      
-      return {
-        address: feeItem.token,
-        symbol: tokenInfo?.symbol || 'Unknown',
-        name: tokenInfo?.name || 'Unknown',
-        icon: tokenInfo?.icon,
-        // Use Jupiter data if available, otherwise use Bags.fm data
-        price: tradingData?.usdPrice || tokenInfo?.usdPrice || 0,
-        marketCap: tradingData?.mcap || tokenInfo?.mcap || 0,
-        liquidity: tradingData?.liquidity || tokenInfo?.liquidity || 0,
-        volume24h: tradingData?.stats24h ? 
-          (tradingData.stats24h.buyVolume + tradingData.stats24h.sellVolume) : 0,
-        priceChange24h: tradingData?.stats24h?.priceChange || tokenInfo?.stats24h?.priceChange || 0,
-        lifetimeFees: parseFloat(feeItem.lifetimeFees) / 1e9, // Convert from lamports
-        creators: feeItem.creators || tokenInfo?.creators || [],
-        hasFeeData: true,
-        isTopTraded: !!tradingData // Flag if it's in top 15 traded
-      };
-    });
-    
-    console.log(`   ✅ Built data for ${enrichedTokens.length} tokens`);
-    console.log(`   📊 ${enrichedTokens.filter(t => t.isTopTraded).length} are in top 15 traded\n`);
-    
-    // Log detailed token information
+    // Log token information
     console.log('═══════════════════════════════════════════════════════════════════');
-    console.log('📊 TOP 100 TOKENS BY LIFETIME FEES');
+    console.log(`🎯 MONITORING: ${token.symbol} - ${token.name}`);
     console.log('═══════════════════════════════════════════════════════════════════\n');
     
-    enrichedTokens.forEach((token, index) => {
-      // Get main developer (has royalties and/or Twitter)
-      const mainDev = token.creators.find(c => c.royaltyBps > 0) || token.creators[0];
+    const mainDev = token.creators.find(c => c.royaltyBps > 0) || token.creators[0];
+    
+    if (mainDev) {
+      const contractAddress = token.address;
+      const twitter = mainDev.username || mainDev.twitterUsername || 'N/A';
+      const claimed = parseFloat(mainDev.totalClaimed || 0) / 1e9;
+      const hasClaimed = claimed > 0;
       
-      if (mainDev) {
-        const devAddress = mainDev.wallet.substring(0, 8) + '...';
-        const twitter = mainDev.username || mainDev.twitterUsername || 'N/A';
-        const claimed = parseFloat(mainDev.totalClaimed || 0) / 1e9;
-        const hasClaimed = claimed > 0;
-        const claimStatus = hasClaimed ? `✅ ${claimed.toFixed(2)} SOL` : '⏳ Unclaimed';
-        
-        console.log(`${(index + 1).toString().padStart(3)}. ${token.symbol.padEnd(12)} | Address: ${devAddress.padEnd(12)} | Twitter: ${twitter.padEnd(20)} | ${claimStatus}`);
-      }
-    });
+      console.log(`   Contract: ${contractAddress}`);
+      console.log(`   Symbol: ${token.symbol}`);
+      console.log(`   Name: ${token.name}`);
+      console.log(`   Creator Twitter: ${twitter}`);
+      console.log(`   Lifetime Fees: ${token.lifetimeFees.toFixed(4)} SOL`);
+      console.log(`   Claimed: ${hasClaimed ? `✅ ${claimed.toFixed(4)} SOL` : '⏳ Not yet claimed'}`);
+    }
     
     console.log('\n═══════════════════════════════════════════════════════════════════\n');
     
-    return enrichedTokens;
+    return token;
     
   } catch (error) {
     console.error(`[${new Date().toISOString()}] Error building token data:`, error.message);
@@ -141,132 +113,56 @@ async function buildCompleteTokenData() {
 }
 
 // Check for new fee claims
-function checkForNewClaims(tokens) {
+function checkForNewClaims(token) {
   const newClaims = [];
   
-  tokens.forEach(token => {
-    if (!token.creators || token.creators.length === 0) return;
+  if (!token || !token.creators || token.creators.length === 0) {
+    return newClaims;
+  }
+  
+  token.creators.forEach(creator => {
     
-    token.creators.forEach(creator => {
-      const claimed = parseFloat(creator.totalClaimed || 0) / 1e9; // Convert from lamports
-      
-      if (claimed === 0) return; // Skip if nothing claimed
-      
-      // FILTER 1: Only track creators with Twitter/username (the actual dev)
-      const hasTwitter = creator.username || creator.twitterUsername;
-      
-      // FILTER 2: Only track creators with royalties (the ones getting paid)
-      const hasRoyalties = creator.royaltyBps > 0;
-      
-      // Skip if not the main creator/developer
-      if (!hasTwitter && !hasRoyalties) {
-        return; // Skip automated addresses (BagsAMM, etc.)
-      }
-      
-      // Create unique key for this creator/token combo
-      const key = `${token.address}-${creator.wallet}`;
-      const previousClaimed = claimedAmountsTracker.get(key) || 0;
-      
-      // Check if there's a new claim
-      if (claimed > previousClaimed) {
-        const newClaimAmount = claimed - previousClaimed;
-        
-        // FILTER 3: Only alert if claim is >= 1 SOL (filter out dust)
-        if (newClaimAmount >= 1.0) {
-          // FILTER 4: Only alert on FIRST claim by this creator
-          const creatorKey = `${token.address}-${creator.wallet}`;
-          const isFirstClaim = !firstClaimAlerted.has(creatorKey);
-          
-          if (isFirstClaim) {
-            newClaims.push({
-              token: token,
-              creator: creator,
-              previousClaimed: previousClaimed,
-              newClaimed: claimed,
-              claimAmount: newClaimAmount,
-              isFirstClaim: true
-            });
-            
-            console.log(`   🚨 FIRST CLAIM DETECTED!`);
-            console.log(`      Token: ${token.symbol} (${token.name})`);
-            console.log(`      Creator: ${creator.username || creator.twitterUsername || creator.wallet.substring(0, 8)}`);
-            console.log(`      Claimed: ${newClaimAmount.toFixed(4)} SOL (Total: ${claimed.toFixed(4)} SOL)`);
-            console.log(`      ⭐ This is their FIRST claim!`);
-            
-            // Mark as alerted
-            firstClaimAlerted.add(creatorKey);
-            
-            // Update last claim time
-            lastClaimTime = Date.now();
-          } else {
-            console.log(`   ℹ️  Subsequent claim ignored: ${newClaimAmount.toFixed(4)} SOL from ${creator.username || 'unknown'} (already alerted on first claim)`);
-          }
-        } else {
-          console.log(`   ℹ️  Small claim ignored: ${newClaimAmount.toFixed(4)} SOL from ${creator.username || 'unknown'} (< 1 SOL threshold)`);
-        }
-      }
-      
-      // Update tracker
-      claimedAmountsTracker.set(key, claimed);
+  const claimed = parseFloat(creator.totalClaimed || 0) / 1e9; // Convert from lamports
+  
+  // FILTER 1: Only track creators with royalties (the main dev getting paid)
+  const hasRoyalties = creator.royaltyBps > 0;
+  
+  if (!hasRoyalties) {
+    return; // Skip non-royalty holders
+  }
+  
+  // Create unique key for this creator/token combo
+  const key = `${token.address}-${creator.wallet}`;
+  const previousClaimed = claimedAmountsTracker.get(key) || 0;
+  
+  // Check if there's a FIRST claim (previousClaimed === 0 and now has claimed)
+  if (previousClaimed === 0 && claimed > 0) {
+    newClaims.push({
+      token: token,
+      creator: creator,
+      previousClaimed: 0,
+      newClaimed: claimed,
+      claimAmount: claimed,
+      isFirstClaim: true
     });
-  });
+    
+    console.log(`   🚨 FIRST CLAIM DETECTED!`);
+    console.log(`      Token: ${token.symbol} (${token.name})`);
+    console.log(`      Creator: ${creator.username || creator.twitterUsername || creator.wallet.substring(0, 8)}`);
+    console.log(`      Claimed: ${claimed.toFixed(4)} SOL`);
+    console.log(`      ⭐ This is their FIRST EVER claim!`);
+    
+    // Update last claim time
+    lastClaimTime = Date.now();
+  }
+  
+  // Update tracker
+  claimedAmountsTracker.set(key, claimed);
+});
   
   return newClaims;
 }
 
-// Send summary to Discord
-async function sendSummaryToDiscord(tokens) {
-  try {
-    console.log(`[${new Date().toISOString()}] 📨 Sending summary to Discord...`);
-    
-    // Take top 10 for display
-    const topTokens = tokens.slice(0, 10);
-    
-    const fields = topTokens.map((token, index) => {
-      const price = token.price ? `$${token.price.toFixed(8)}` : 'N/A';
-      const volume = token.volume24h > 0 ? `$${token.volume24h.toLocaleString(undefined, {maximumFractionDigits: 0})}` : 'N/A';
-      const change = token.priceChange24h ? `${token.priceChange24h.toFixed(2)}%` : 'N/A';
-      const fees = token.lifetimeFees > 0 ? `${token.lifetimeFees.toFixed(2)} SOL` : 'N/A';
-      const claimedTotal = token.creators.reduce((sum, c) => sum + parseFloat(c.totalClaimed || 0) / 1e9, 0);
-      const claimed = claimedTotal > 0 ? `${claimedTotal.toFixed(2)} SOL` : 'None';
-      
-      return {
-        name: `${index + 1}. ${token.symbol} - ${token.name}`,
-        value: `💰 Price: ${price} | 📊 Vol: ${volume}\n` +
-               `📈 24h: ${change} | 💸 Fees: ${fees}\n` +
-               `✅ Claimed: ${claimed}`,
-        inline: false
-      };
-    });
-    
-    const payload = {
-      embeds: [{
-        title: '💼 Bags.fun - Top Traded Tokens (24h)',
-        description: `📊 Top ${topTokens.length} tokens with lifetime fees tracking`,
-        color: 0x00ff88,
-        fields: fields,
-        footer: {
-          text: 'Bags.fun Fee Monitor | Updates every minute'
-        },
-        timestamp: new Date().toISOString()
-      }]
-    };
-    
-    const response = await fetch(DISCORD_WEBHOOK_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    
-    console.log(`   ✅ Summary sent to Discord`);
-  } catch (error) {
-    console.error(`   ❌ Error:`, error.message);
-  }
-}
 
 // Send claim alert to Discord
 async function sendClaimAlert(claims) {
@@ -416,8 +312,13 @@ async function checkAndSendGooningMessage() {
 // Main monitoring loop
 async function monitorFees() {
   try {
-    // Build complete token data
-    const tokens = await buildCompleteTokenData();
+    // Get target token data
+    const token = await buildTokenData();
+    
+    if (!token) {
+      console.log(`[${new Date().toISOString()}] ⚠️  Target token not in top 100, skipping...\n`);
+      return;
+    }
     
     // Skip sending any messages on first run (just establish baseline)
     if (isFirstRun) {
@@ -425,21 +326,21 @@ async function monitorFees() {
       isFirstRun = false;
       
       // Check for new claims to populate tracker
-      checkForNewClaims(tokens);
+      checkForNewClaims(token);
       
       console.log(`[${new Date().toISOString()}] ✅ Baseline established\n`);
       return;
     }
     
-    // Check for new claims
-    const newClaims = checkForNewClaims(tokens);
+    // Check for FIRST claim
+    const newClaims = checkForNewClaims(token);
     
-    // If there are new claims, send alerts
+    // If there's a FIRST claim, send alert
     if (newClaims.length > 0) {
-      console.log(`\n🎯 Found ${newClaims.length} new claim(s)!\n`);
+      console.log(`\n🎯 FIRST CLAIM DETECTED!\n`);
       await sendClaimAlert(newClaims);
     } else {
-      console.log(`   ℹ️  No new claims detected`);
+      console.log(`   ℹ️  No first claim yet (still monitoring...)`);
       
       // Check if should send hourly gooning message
       await checkAndSendGooningMessage();
@@ -454,9 +355,8 @@ async function monitorFees() {
 
 // Start the service
 console.log('🚀 Starting Bags.fun Fee Claim Monitor...');
-console.log(`💰 Monitoring 100+ tokens with lifetime fees (Bags.fm API)`);
-console.log(`📡 Enriching with top 15 traded data (Jupiter API)`);
-console.log(`🚨 Will alert on Discord when ANY creator claims fees`);
+console.log(`🎯 Monitoring specific token: ${TARGET_TOKEN}`);
+console.log(`🚨 Will alert on Discord on FIRST claim by creator`);
 console.log(`😴 Will send "gooning" message if no claims for 1 hour`);
 console.log(`⏱️  Check interval: ${POLL_INTERVAL / 1000} seconds\n`);
 console.log(''.padEnd(70, '='));
