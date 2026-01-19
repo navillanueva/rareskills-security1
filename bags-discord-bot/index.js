@@ -3,7 +3,8 @@ const fetch = require('node-fetch');
 
 // Configuration
 const TARGET_TOKEN = 'Gc8VdRoCtset6SFErLKBcV5e4Ew8XwnTDYbtYXFTBAGS'; // Specific token to monitor
-const BAGS_FEES_API_URL = 'https://api2.bags.fm/api/v1/token-launch/top-tokens/lifetime-fees';
+const JUPITER_SEARCH_URL = `https://datapi.jup.ag/v1/assets/search?query=${TARGET_TOKEN}`;
+const BAGS_ALL_TOKENS_URL = 'https://api2.bags.fm/api/v1/token-launch/top-tokens/lifetime-fees';
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 const POLL_INTERVAL = 5000; // 5 seconds for claim monitoring
 const HOUR_IN_MS = 3600000; // 1 hour in milliseconds
@@ -25,29 +26,67 @@ let lastClaimTime = Date.now();
 let lastGooningMessageTime = 0;
 let isFirstRun = true;
 
-// Fetch specific token data
-async function fetchTargetTokenData() {
+// Fetch token info from Jupiter
+async function fetchJupiterTokenInfo() {
   try {
-    console.log(`[${new Date().toISOString()}] 🎯 Checking target token: ${TARGET_TOKEN.substring(0, 12)}...`);
-    const response = await fetch(BAGS_FEES_API_URL);
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    
+    const response = await fetch(JUPITER_SEARCH_URL);
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const data = await response.json();
+    return data[0]; // Returns array, take first result
+  } catch (error) {
+    console.error(`   ❌ Jupiter error:`, error.message);
+    return null;
+  }
+}
+
+// Fetch creator/claim data from Bags.fm
+async function fetchBagsCreatorData() {
+  try {
+    const response = await fetch(BAGS_ALL_TOKENS_URL);
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     const data = await response.json();
     const tokens = data.response || data;
     
-    // Find our specific token
+    // Find our target token in the list
     const targetToken = tokens.find(t => t.token === TARGET_TOKEN);
+    return targetToken;
+  } catch (error) {
+    console.error(`   ❌ Bags.fm error:`, error.message);
+    return null;
+  }
+}
+
+// Fetch complete target token data
+async function fetchTargetTokenData() {
+  try {
+    console.log(`[${new Date().toISOString()}] 🎯 Fetching token data...`);
     
-    if (!targetToken) {
-      console.log(`   ⚠️  Target token not found in top 100 by lifetime fees`);
+    const [jupiterData, bagsData] = await Promise.all([
+      fetchJupiterTokenInfo(),
+      fetchBagsCreatorData()
+    ]);
+    
+    if (!jupiterData) {
+      console.log(`   ⚠️  Token not found in Jupiter`);
       return null;
     }
     
-    console.log(`   ✅ Found target token: ${targetToken.tokenInfo?.symbol}`);
-    return targetToken;
+    console.log(`   ✅ Found: ${jupiterData.symbol} - ${jupiterData.name}`);
+    
+    // Combine data
+    const tokenData = {
+      tokenInfo: jupiterData,
+      creators: bagsData?.creators || [],
+      lifetimeFees: bagsData ? parseFloat(bagsData.lifetimeFees) : '0'
+    };
+    
+    if (!bagsData) {
+      console.log(`   ⚠️  Not in top 100 by fees yet - creator data unavailable`);
+    } else {
+      console.log(`   ✅ Has creator data from Bags.fm`);
+    }
+    
+    return tokenData;
   } catch (error) {
     console.error(`   ❌ Error:`, error.message);
     throw error;
@@ -59,26 +98,27 @@ async function fetchTargetTokenData() {
 async function buildTokenData() {
   try {
     // Fetch target token
-    const targetToken = await fetchTargetTokenData();
+    const data = await fetchTargetTokenData();
     
-    if (!targetToken) {
+    if (!data) {
       console.log(`   ⚠️  Target token not available\n`);
       return null;
     }
     
-    const tokenInfo = targetToken.tokenInfo;
+    const tokenInfo = data.tokenInfo;
     const token = {
-      address: targetToken.token,
+      address: TARGET_TOKEN,
       symbol: tokenInfo?.symbol || 'Unknown',
       name: tokenInfo?.name || 'Unknown',
       icon: tokenInfo?.icon,
       price: tokenInfo?.usdPrice || 0,
       marketCap: tokenInfo?.mcap || 0,
       liquidity: tokenInfo?.liquidity || 0,
-      volume24h: 0,
+      volume24h: tokenInfo?.stats24h ? 
+        (tokenInfo.stats24h.buyVolume + tokenInfo.stats24h.sellVolume) : 0,
       priceChange24h: tokenInfo?.stats24h?.priceChange || 0,
-      lifetimeFees: parseFloat(targetToken.lifetimeFees) / 1e9,
-      creators: targetToken.creators || []
+      lifetimeFees: parseFloat(data.lifetimeFees || 0) / 1e9,
+      creators: data.creators || []
     };
     
     // Log token information
@@ -86,20 +126,26 @@ async function buildTokenData() {
     console.log(`🎯 MONITORING: ${token.symbol} - ${token.name}`);
     console.log('═══════════════════════════════════════════════════════════════════\n');
     
-    const mainDev = token.creators.find(c => c.royaltyBps > 0) || token.creators[0];
+    console.log(`   Contract: ${token.address}`);
+    console.log(`   Symbol: ${token.symbol}`);
+    console.log(`   Name: ${token.name}`);
+    console.log(`   Price: $${token.price?.toFixed(8) || 'N/A'}`);
+    console.log(`   Market Cap: $${token.marketCap?.toLocaleString() || 'N/A'}`);
+    console.log(`   Lifetime Fees: ${token.lifetimeFees.toFixed(4)} SOL`);
     
-    if (mainDev) {
-      const contractAddress = token.address;
-      const twitter = mainDev.username || mainDev.twitterUsername || 'N/A';
-      const claimed = parseFloat(mainDev.totalClaimed || 0) / 1e9;
-      const hasClaimed = claimed > 0;
+    if (token.creators.length > 0) {
+      const mainDev = token.creators.find(c => c.royaltyBps > 0) || token.creators[0];
       
-      console.log(`   Contract: ${contractAddress}`);
-      console.log(`   Symbol: ${token.symbol}`);
-      console.log(`   Name: ${token.name}`);
-      console.log(`   Creator Twitter: ${twitter}`);
-      console.log(`   Lifetime Fees: ${token.lifetimeFees.toFixed(4)} SOL`);
-      console.log(`   Claimed: ${hasClaimed ? `✅ ${claimed.toFixed(4)} SOL` : '⏳ Not yet claimed'}`);
+      if (mainDev) {
+        const twitter = mainDev.username || mainDev.twitterUsername || 'N/A';
+        const claimed = parseFloat(mainDev.totalClaimed || 0) / 1e9;
+        const hasClaimed = claimed > 0;
+        
+        console.log(`   Creator Twitter: ${twitter}`);
+        console.log(`   Claimed: ${hasClaimed ? `✅ ${claimed.toFixed(4)} SOL` : '⏳ Not yet claimed'}`);
+      }
+    } else {
+      console.log(`   ⚠️  No creator data (not in top 100 by fees)`);
     }
     
     console.log('\n═══════════════════════════════════════════════════════════════════\n');
