@@ -150,7 +150,7 @@ async function buildTokenData() {
     
     console.log('\n═══════════════════════════════════════════════════════════════════\n');
     
-    return token; // Return token data
+    return token; // Return token
     
   } catch (error) {
     console.error(`[${new Date().toISOString()}] Error building token data:`, error.message);
