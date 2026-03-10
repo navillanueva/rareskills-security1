@@ -2,12 +2,6 @@
 // Compile example:
 //   solc --strict-assembly zcash-zrc20/EERC20.yul
 //
-// NOTE:
-// - This is a minimal ERC20 implemented in Yul (EVM assembly), plus:
-//     transferWithEncryptedMemo(address,uint256,bytes)
-//   which emits TransferWithEncryptedMemo(from,to,amount,encryptedMemo) if memo non-empty.
-// - name/symbol are exposed via getters returning dynamic strings.
-// - decimals is fixed to 18.
 
 object "EERC20" {
   code {
