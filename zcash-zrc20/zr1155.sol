@@ -17,10 +17,6 @@ contract ZR1155 is ERC1155, Ownable {
         _mint(msg.sender, FUNGIBLE_TOKEN_ID, INITIAL_FUNGIBLE_SUPPLY, "");
     }
 
-    function setURI(string calldata newuri) external onlyOwner {
-        _setURI(newuri);
-    }
-
     function mint(address account, uint256 id, uint256 amount, bytes calldata data) external onlyOwner {
         _mint(account, id, amount, data);
     }
