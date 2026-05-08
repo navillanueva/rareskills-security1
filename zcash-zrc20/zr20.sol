@@ -9,4 +9,16 @@ contract ZR20 is ERC20 {
     constructor() ERC20("ZR20", "ZR20") {
         _mint(msg.sender, INITIAL_SUPPLY);
     }
+
+    function transferWithEncryptedMemo(
+        address to,
+        uint256 amount,
+        bytes calldata encryptedMemo
+    ) external returns (bool) {
+        bool success = transfer(to, amount);
+        if (success && encryptedMemo.length > 0) {
+            emit TransferWithEncryptedMemo(msg.sender, to, amount, encryptedMemo);
+        }
+        return success;
+    }   
 }
