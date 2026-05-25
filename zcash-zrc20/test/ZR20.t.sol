@@ -2,8 +2,9 @@
 pragma solidity ^0.8.20;
 
 import {Test} from "forge-std/Test.sol";
-import {ZR20} from "../zr20.sol";
+import {ZR20} from "../src/zr20.sol";
 
+/// @dev Fuzz + unit tests for ZR20 (Foundry: `forge test -vv` from `zcash-zrc20/`).
 contract ZR20Test is Test {
     ZR20 internal token;
     address internal owner;
@@ -19,8 +20,6 @@ contract ZR20Test is Test {
         token = new ZR20();
     }
 
-  // ----- Unit smoke tests -----
-
     function test_InitialState() public view {
         assertEq(token.name(), "ZR20");
         assertEq(token.symbol(), "ZR20");
@@ -31,7 +30,7 @@ contract ZR20Test is Test {
         assertFalse(token.paused());
     }
 
-    // ----- Fuzz: transfers preserve supply -----
+    // ----- Fuzz: ERC-20 transfers -----
 
     function testFuzz_TransferPreservesTotalSupply(uint256 amount) public {
         amount = bound(amount, 1, INITIAL_SUPPLY);
@@ -56,19 +55,26 @@ contract ZR20Test is Test {
         token.transfer(address(0), amount);
     }
 
+    function testFuzz_TransferRevertsWhenInsufficientBalance(uint256 amount) public {
+        amount = bound(amount, INITIAL_SUPPLY + 1, type(uint256).max);
+        vm.expectRevert();
+        token.transfer(alice, amount);
+    }
+
     // ----- Fuzz: transferWithEncryptedMemo -----
 
     function testFuzz_TransferWithEncryptedMemo(uint256 amount, bytes calldata memo) public {
         amount = bound(amount, 1, INITIAL_SUPPLY);
 
-        vm.expectEmit(true, true, false, true);
         if (memo.length > 0) {
+            vm.expectEmit(true, true, false, true);
             emit ZR20.TransferWithEncryptedMemo(owner, alice, amount, memo);
         }
 
         bool ok = token.transferWithEncryptedMemo(alice, amount, memo);
         assertTrue(ok);
         assertEq(token.balanceOf(alice), amount);
+        assertEq(token.balanceOf(owner), INITIAL_SUPPLY - amount);
     }
 
     function testFuzz_TransferWithEncryptedMemoRevertsZeroAddress(uint256 amount, bytes calldata memo) public {
@@ -84,7 +90,7 @@ contract ZR20Test is Test {
         token.transferWithEncryptedMemo(alice, amount, memo);
     }
 
-    // ----- Fuzz: transferFrom + memo -----
+    // ----- Fuzz: transferFromWithEncryptedMemo -----
 
     function testFuzz_TransferFromWithEncryptedMemo(uint256 amount, bytes calldata memo) public {
         amount = bound(amount, 1, INITIAL_SUPPLY);
@@ -138,6 +144,12 @@ contract ZR20Test is Test {
         assertEq(token.totalSupply(), INITIAL_SUPPLY - amount);
     }
 
+    function testFuzz_BurnRevertsWhenExceedsBalance(uint256 burnAmount) public {
+        burnAmount = bound(burnAmount, INITIAL_SUPPLY + 1, type(uint256).max);
+        vm.expectRevert();
+        token.burn(burnAmount);
+    }
+
     // ----- Fuzz: pause -----
 
     function testFuzz_PauseBlocksTransfer(uint256 amount) public {
@@ -162,7 +174,7 @@ contract ZR20Test is Test {
         token.pause();
     }
 
-    // ----- Fuzz: permit (EIP-2612) -----
+    // ----- Fuzz: EIP-2612 permit -----
 
     function testFuzz_PermitSetsAllowance(uint256 privateKey, uint256 amount, uint256 deadline) public {
         privateKey = bound(privateKey, 1, type(uint256).max / 2);
@@ -192,7 +204,7 @@ contract ZR20Test is Test {
         assertEq(token.allowance(holder, bob), amount);
     }
 
-    // ----- Fuzz: invariant-style round trip -----
+    // ----- Fuzz: multi-hop transfers -----
 
     function testFuzz_RoundTripTransferChain(uint256 a, uint256 b) public {
         a = bound(a, 1, INITIAL_SUPPLY / 2);
